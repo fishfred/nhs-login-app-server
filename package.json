@@ -18,15 +18,20 @@
         "test": "jest --forceExit --coverage --verbose"
     },
     "dependencies": {
+        "axios": "^0.21.1",
         "express": "^4.17.1",
+        "jsonwebtoken": "^8.5.1",
         "redis": "^3.0.2",
         "socket.io": "^3.1.1"
     },
     "devDependencies": {
         "@types/express": "^4.17.11",
+        "@types/jsonwebtoken": "^8.5.0",
         "@types/redis": "^2.8.28",
+        "@types/request": "^2.48.5",
         "@types/socket.io": "^2.1.13",
         "@types/supertest": "^2.0.10",
+        "@types/uuid": "^8.3.0",
         "jest": "26.6.3",
         "redis-mock": "^0.56.3",
         "supertest": "^6.1.3",
