@@ -4,6 +4,7 @@ import * as sio from "socket.io";
 import redis from "redis";
 
 import {OpenID} from "./openid";
+import {TokenManager} from "./TokenManager";
 
 // Create Express server
 const app = express();
@@ -11,6 +12,7 @@ const http = new Server(app);
 const io = new sio.Server(http);
 const redisClient = redis.createClient();
 const oid = new OpenID();
+const tokenManager = new TokenManager(redisClient);
 
 redisClient.on("error", (error) => {
     if (error.code == "ECONNREFUSED"){
@@ -30,8 +32,9 @@ app.get("/env", (req, res) => {
     res.status(200).json({
         envs: [{
             name: "Sandpit",
-            url: "https://auth.sandpit.signin.nhs.uk"
-        }]
+            url: "https://auth.sandpit.signin.nhs.uk",
+            client_id: "du-nhs-login"
+        }] 
     })
 });
 
@@ -51,13 +54,14 @@ io.on("connection", (socket: sio.Socket) => {
     })
 })
 
-app.post("/code", async (req, res) => {
-    console.log("Received code");
+app.get("/code", async  (req, res) => {
     //@ts-ignore
-    const nhsUser = await oid.requestAccessToken(req.query.code);
-    res.json({
-        "nhsUserInfo": nhsUser
-    });
+    const idToken = await oid.requestAccessToken(req.query.code);
+    if (!idToken){
+        res.redirect("com.dunhslogin://oauth?token=undefined")
+        return;
+    }
+    res.redirect("com.dunhslogin://oauth?token="+idToken);
 });
 
 if (process.env.JEST_WORKER_ID === undefined) {

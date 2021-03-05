@@ -1,13 +1,13 @@
 import { Request } from 'express';
 import * as jwt from "jsonwebtoken";
-import {readFileSync} from "fs";
-import {v1 as uuidv1} from "uuid";
-import {stringify} from "querystring";
+import { readFileSync } from "fs";
+import { v1 as uuidv1 } from "uuid";
+import { stringify } from "querystring";
 import axios from "axios";
 
 const openIdConfig = {
     CLIENT_ID: "du-nhs-login",
-    REDIRECT_URI: "com.nhsloginapp://oauth",
+    REDIRECT_URI: "https://du-nhs-login.herokuapp.com/code",
     ENV_URI: "https://auth.sandpit.signin.nhs.uk",
     TOKEN_URI: "https://auth.sandpit.signin.nhs.uk/token"
 }
@@ -90,9 +90,9 @@ export class OpenID {
     }
 
     async requestAccessToken(code: string): Promise<NhsUserInfo> {
-        return new Promise((resolve, reject)=>{
-            resolve(exampleUser);
-        });
+        // return new Promise((resolve, reject)=>{
+        //     resolve(exampleUser);
+        // });
         const post_data = {
             grant_type: "authorization_code",
             code,
@@ -102,26 +102,28 @@ export class OpenID {
             client_id: openIdConfig.CLIENT_ID
         }
         const post_data_string = stringify(post_data);
-        const response = await axios.post(openIdConfig.TOKEN_URI, post_data_string, {
-            headers: {
-                "Content-Type": "application/x-www-form-urlencoded",
-                "Content-Length": post_data_string.length
-            }
-        }).catch((error) => {
+        console.log(post_data_string);
+        const response = await axios.post(openIdConfig.TOKEN_URI, post_data_string).catch((error) => {
             console.log(error);
-            if (error.response){
+            if (error.response) {
                 console.log(error.response.data);
             }
         });
-        if (!response){
+        // console.log(response);
+        if (!response) {
             return;
         }
+        const {access_token, id_token, refresh_token} = response.data;
 
+        return id_token;
         // console.log(response.data);
     }
 
-    generateAssertionJWT(tokenUri: string, clientId: string){
-        const privateKey = readFileSync(__dirname + "\\..\\private_key.pem", "utf-8");
+    generateAssertionJWT(tokenUri: string, clientId: string) {
+        let privateKey = process.env.PRIVATE_KEY;
+        if (!privateKey) {
+            privateKey = readFileSync(__dirname + "\\..\\private_key.pem", "utf-8");
+        }
         const signOptions: jwt.SignOptions = {
             issuer: clientId,
             subject: clientId,
@@ -130,6 +132,6 @@ export class OpenID {
             algorithm: "RS512"
         }
 
-        return jwt.sign({jti: uuidv1()}, privateKey, signOptions);
+        return jwt.sign({ jti: uuidv1() }, privateKey, signOptions);
     }
 }
