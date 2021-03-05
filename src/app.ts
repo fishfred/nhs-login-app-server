@@ -14,11 +14,14 @@ const redisClient = redis.createClient();
 const oid = new OpenID();
 const tokenManager = new TokenManager(redisClient);
 
+let MESSAGING_ENABLED = true;
+
 redisClient.on("error", (error) => {
     if (error.code == "ECONNREFUSED"){
         console.warn("WARNING: Could not connect to redis instance. Make sure it has been started.");
         console.log("No redis instance. Disabling messaging functionality");
         redisClient.quit(() => {});
+        MESSAGING_ENABLED = false;
         return;
     }
     console.log(error);
@@ -54,15 +57,22 @@ io.on("connection", (socket: sio.Socket) => {
     })
 })
 
-app.get("/code", async  (req, res) => {
-    //@ts-ignore
-    const idToken = await oid.requestAccessToken(req.query.code);
-    if (!idToken){
-        res.redirect("com.dunhslogin://oauth?token=undefined")
+app.get("/code", (req, res) => {
+    if (!req.query.code){
+        res.redirect("com.dunhslogin://oauth?code=undefined")
         return;
     }
-    res.redirect("com.dunhslogin://oauth?token="+idToken);
+    res.redirect("com.dunhslogin://oauth?code="+req.query.code);
 });
+
+app.post("/token", async (req, res) => {
+    //@ts-ignore
+    const idToken = await oid.requestAccessToken(req.query.code);
+    res.json({
+        id_token: idToken,
+        messaging_enabled: MESSAGING_ENABLED
+    });
+})
 
 if (process.env.JEST_WORKER_ID === undefined) {
     const PORT = process.env.PORT || 3000;
