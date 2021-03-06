@@ -89,7 +89,11 @@ export class OpenID {
 
     }
 
-    async requestAccessToken(code: string): Promise<NhsUserInfo> {
+    async requestAccessToken(code: string): Promise<{
+        idToken: NhsUserInfo,
+        nhsAccessToken: string,
+        idTokenPayload: any
+    }> {
         // return new Promise((resolve, reject)=>{
         //     resolve(exampleUser);
         // });
@@ -115,8 +119,16 @@ export class OpenID {
         }
         const {access_token, id_token, refresh_token} = response.data;
 
-        return id_token;
+        return {
+            idToken: id_token,
+            idTokenPayload: this.decodeToken(id_token),
+            nhsAccessToken: access_token
+        };
         // console.log(response.data);
+    }
+
+    decodeToken(token: string): any{
+        return jwt.decode(token);
     }
 
     generateAssertionJWT(tokenUri: string, clientId: string) {

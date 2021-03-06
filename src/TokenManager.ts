@@ -45,4 +45,31 @@ export class TokenManager {
             });
         });
     }
+
+    storeNhsAccessToken(token: string, nhs_number: string){
+        if (!this.db.connected){
+            return;
+        }
+        this.db.set("token:" + nhs_number, token, (err, ok) => {
+            if (ok == "OK"){
+                this.db.expire("token:" + nhs_number, 60 * 30);
+            }
+        });
+    }
+
+    getNhsAccessToken(nhs_number: string): Promise<string>{
+        if (!this.db.connected){
+            return;
+        }
+        return new Promise<string>((resolve, reject) => {
+            this.db.get("token:" + nhs_number, (err, str) => {
+                if (err){
+                    reject(err);
+                }
+                else {
+                    resolve(str);
+                }
+            });
+        })
+    }
 }

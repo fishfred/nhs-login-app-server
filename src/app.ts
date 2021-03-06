@@ -10,7 +10,7 @@ import {TokenManager} from "./TokenManager";
 const app = express();
 const http = new Server(app);
 const io = new sio.Server(http);
-const redisClient = redis.createClient();
+const redisClient = redis.createClient(process.env.REDIS_URL ? process.env.REDIS_URL : undefined);
 const oid = new OpenID();
 const tokenManager = new TokenManager(redisClient);
 
@@ -67,10 +67,21 @@ app.get("/code", (req, res) => {
 
 app.post("/token", async (req, res) => {
     //@ts-ignore
-    const idToken = await oid.requestAccessToken(req.query.code);
+    const {idToken, nhsAccessToken, idTokenPayload} = await oid.requestAccessToken(req.query.code);
+    let messagingDisabledReason = "";
+    let accessToken = "";
+    if (!idTokenPayload.nhs_number){
+        messagingDisabledReason = "Profile scope not selected."
+    }
+    else {
+        tokenManager.storeNhsAccessToken(nhsAccessToken, idTokenPayload.nhs_number);
+        accessToken = tokenManager.generateToken(idTokenPayload.nhs_number);
+    }
     res.json({
         id_token: idToken,
-        messaging_enabled: MESSAGING_ENABLED
+        messaging_enabled: MESSAGING_ENABLED,
+        messaging_disabled_reason: messagingDisabledReason,
+        access_token: accessToken
     });
 })
 
