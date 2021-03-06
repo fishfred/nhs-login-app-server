@@ -146,4 +146,17 @@ export class OpenID {
 
         return jwt.sign({ jti: uuidv1() }, privateKey, signOptions);
     }
+
+    async fidoUafRegister(access_token: string){
+        return await fetch("https://uaf.sandpit.signin.nhs.uk/regRequest", {
+            method: "GET",
+            headers: {
+                "Authorization": "Bearer " + access_token
+            }
+        }).then((res) => res.json()).catch((err) => {
+            return {
+                error: "request_failed"
+            }
+        });
+    }
 }

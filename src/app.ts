@@ -65,6 +65,33 @@ app.get("/code", (req, res) => {
     res.redirect("com.dunhslogin://oauth?code="+req.query.code);
 });
 
+app.get("/fido/regRequest", async (req, res) => {
+    const appToken = req.headers.authorization.replace("Bearer ", "");
+    if (!appToken){
+        res.status(400).json({
+            error: "access_denied"
+        });
+        return;
+    }
+    const nhsNumber = await tokenManager.verifyToken(appToken);
+    if (!nhsNumber || nhsNumber == ""){
+        res.status(403).json({
+            error: "invalid_token"
+        });
+        return;
+    }
+    console.log("fido regrequest " + nhsNumber);
+    const nhsAccessToken = await tokenManager.getNhsAccessToken(nhsNumber);
+
+    const response = await oid.fidoUafRegister(nhsAccessToken);
+    if (response.error){
+        res.status(500).json(response);
+    }
+    else{
+        res.status(200).json(response);
+    }
+})
+
 app.post("/token", async (req, res) => {
     //@ts-ignore
     const {idToken, nhsAccessToken, idTokenPayload} = await oid.requestAccessToken(req.query.code);
@@ -81,7 +108,8 @@ app.post("/token", async (req, res) => {
         id_token: idToken,
         messaging_enabled: MESSAGING_ENABLED,
         messaging_disabled_reason: messagingDisabledReason,
-        access_token: accessToken
+        access_token: accessToken,
+        nhs_access_token: nhsAccessToken
     });
 })
 
