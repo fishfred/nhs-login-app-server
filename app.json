@@ -1,0 +1,13 @@
+{
+    "name": "DU NHS Login app",
+    "description": "Chat app using NHS Login",
+    "repository": "https://github.com/fishfred/nhs-login-app-server",
+    "logo": "https://node-js-sample.herokuapp.com/node.png",
+    "keywords": [
+        "node",
+        "express",
+        "openid",
+        "fido-uaf",
+        "nhs"
+    ]
+}
