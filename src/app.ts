@@ -6,6 +6,7 @@ import redis from "redis";
 import {OpenID} from "./openid";
 import {TokenManager} from "./TokenManager";
 import {EnvironmentManager} from "./EnvironmentManager";
+import { ChatManager } from "./ChatManager";
 
 // Create Express server
 const app = express();
@@ -15,6 +16,7 @@ const redisClient = redis.createClient(process.env.REDIS_URL ? process.env.REDIS
 const oid = new OpenID();
 const tokenManager = new TokenManager(redisClient);
 const environmentManager = new EnvironmentManager();
+const chatManager = new ChatManager(redisClient);
 
 let MESSAGING_ENABLED = true;
 
@@ -46,8 +48,14 @@ app.get("/chat/:id", (req, res) => {
     // Get all messages in a given chat
 });
 
-app.get("/chats", (req, res) => {
+app.get("/chats", async (req, res) => {
     // Get list of user's chats
+    const token = req.headers.authorization.replace("Bearer ", "");
+    const env = req.query.env as string;
+    const chats = await chatManager.getChatsByIdToken(token, environmentManager.getEnvironmentByName(env));
+    res.status(200).json({
+        chats
+    });
 });
 
 io.on("connection", (socket: sio.Socket) => {
@@ -65,10 +73,6 @@ app.get("/code", (req, res) => {
     }
     res.redirect("com.dunhslogin://oauth?code="+req.query.code);
 });
-
-app.get("/chats", (req, res) => {
-
-})
 
 app.post("/token", async (req, res) => {
     const {env, code} = req.query;
@@ -98,7 +102,7 @@ app.post("/token", async (req, res) => {
     }
     res.json({
         id_token: idToken,
-        messaging_enabled: MESSAGING_ENABLED,
+        messaging_enabled: MESSAGING_ENABLED && messagingDisabledReason == "",
         messaging_disabled_reason: messagingDisabledReason,
         access_token: accessToken,
         nhs_access_token: nhsAccessToken
