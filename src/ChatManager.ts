@@ -19,10 +19,36 @@ interface GPUser {
     id: String
 }
 
+export type MessageType = "text" | "image"
+
+export interface Message {
+    type: MessageType,
+    data: string
+}
+
 export class ChatManager {
     db: RedisClient;
     constructor(redisClient: RedisClient){
         this.db = redisClient;
+    }
+
+    async getGpIdsWhichMessageUser(nhsNumber: string): Promise<string[]>{
+        const gpPatients = await this.scan("0", "gp:*:patients");
+        
+        const gps =  await Promise.all(gpPatients.map((setKey) => {
+            return new Promise<string|undefined>((resolve, reject)=>{
+                this.db.sismember(setKey, nhsNumber, (err, res)=>{
+                    if (err){
+                        console.log(err);
+                        resolve(undefined);
+                    }
+                    if (res == 1){
+                        resolve(setKey.replace(":patients", ""));
+                    }
+                });
+            });
+        }));
+        return gps.filter((g) => g !== undefined);
     }
 
     async getChatsByIdToken(idToken: string, env: Environment): Promise<ChatInfo[]> {
@@ -30,23 +56,10 @@ export class ChatManager {
         if (!nhsNumber){
             return [];
         }
-        const gpPatients = await this.scan("0", "gp:*:patients");
-        
-        let gps = await Promise.all(gpPatients.map((setKey) => {
-            return new Promise<string|undefined>((resolve, reject)=>{
-                this.db.sismember(setKey, nhsNumber, (err, res)=>{
-                    if (err){
-                        console.log(err);
-                    }
-                    if (res == 1){
-                        resolve(setKey.replace(":patients", ""));
-                    }
-                });
-            }).then((val) => this.getGpProfileFromId(val));
-        }));
-        console.log(gps);
-        gps = gps.filter((gp) => gp !== undefined);
-        const chats = gps.map((gp) => {
+        const gps = await this.getGpIdsWhichMessageUser(nhsNumber);
+        const gpDetails = await Promise.all(gps.map((g) => this.getGpProfileFromId(g)));
+
+        const chats = gpDetails.map((gp) => {
             return {
                 gp,
                 patient: {
@@ -89,6 +102,45 @@ export class ChatManager {
             name,
             location
         }
+    }
+
+    async getChatMessages(idToken: string, environment: Environment, uid: string): Promise<Message[]> {
+        const nhsNumber = TokenManager.instance.verifyToken(idToken, environment);
+        return new Promise<Message[]>((resolve, reject) => {
+            this.db.lrange("messages:" + nhsNumber + ":" + uid, 0, 20, (err, res) => {
+                if (err){
+                    reject(err);
+                    return;
+                }
+                resolve(res.map((r) => JSON.parse(r) as Message));
+            });
+        });
+    }
+
+    async userCanMessageGp(nhsNumber: string, gpId: string): Promise<boolean>{
+        return (await this.getGpIdsWhichMessageUser(nhsNumber)).indexOf(gpId) !== -1;
+    }
+
+    async sendMessage(idToken: string, environment: Environment, uid: string, message: string, messageType: MessageType) {
+        const nhsNumber = await TokenManager.instance.verifyToken(idToken, environment);
+        if (!this.userCanMessageGp(nhsNumber, uid)){
+            console.warn(`User ${nhsNumber} is not authorized to message gp ${uid}`);
+            return;
+        }
+        const msgObj: Message = {
+            data: message,
+            type: messageType
+        }
+        return new Promise<void>((resolve, reject) => {
+            this.db.lpush(`messages:${nhsNumber}:${uid}`, JSON.stringify(msgObj), (err, res) => {
+                if (err){
+                    reject(err);
+                }
+                else {
+                    resolve();
+                }
+            });
+        })
     }
 
     async scan(cursor: string, pattern: string): Promise<string[]>{

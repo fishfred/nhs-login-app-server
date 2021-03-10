@@ -29,8 +29,7 @@ redisClient.on("error", (error) => {
         return;
     }
     console.log(error);
-})
-
+});
 
 app.get("/env", (req, res) => {
     res.status(200).json({
@@ -58,11 +57,25 @@ app.get("/chats", async (req, res) => {
     });
 });
 
-io.on("connection", (socket: sio.Socket) => {
+io.on("connection", async (socket: sio.Socket) => {
+    console.log("new socket.io connection")
+    const idToken = socket.handshake.auth.token;
+    const envName = socket.handshake.query.env as string;
+    const env = EnvironmentManager.instance.getEnvironmentByName(envName);
+    const nhsNumber = await tokenManager.verifyToken(idToken, env);
+    if (!nhsNumber){
+        socket.emit("error", {
+            error: "Invalid token"
+        });
+    }
+
+    socket.emit("connected");
+
     // New user connected
-    socket.on("message:text", (data) => {
+    socket.on("message:text", async (data) => {
         const {chatid, text} = data;
-        // New text message
+        console.log(`message ${chatid} ${text}`)
+        await chatManager.sendMessage(idToken, env, chatid, text, "text");
     })
 })
 
