@@ -2,27 +2,26 @@ import { RedisClient } from "redis";
 import * as jwt from "jsonwebtoken";
 import {v1 as uuidv1} from "uuid";
 
-import {readFileSync} from "fs";
+import {Environment, EnvironmentManager} from "./EnvironmentManager";
 
 export class TokenManager {
+    static instance: TokenManager;
     db: RedisClient;
     privateKey: string;
     publicKey: string;
 
     constructor(database: RedisClient){
+        if (TokenManager.instance){
+            console.warn("TokenManager instance already exists.");
+        }
+        TokenManager.instance = this;
         // connect to database
         this.db = database;
-        this.privateKey = process.env.PRIVATE_KEY;
-        if (!this.privateKey) {
-            this.privateKey = readFileSync(__dirname + "\\..\\private_key.pem", "utf-8");
-        }
+        this.privateKey = process.env.PRIVATE_KEY
         this.publicKey = process.env.PUBLIC_KEY;
-        if (!this.publicKey) {
-            this.publicKey = readFileSync(__dirname + "\\..\\public_key.pem", "utf-8");
-        }
     }
 
-    generateToken(userid: string){
+    generateToken(userid: string, environment: Environment){
         // Generate a jwt and return it
         const signOptions: jwt.SignOptions = {
             issuer: "nhs-login-app",
@@ -30,12 +29,12 @@ export class TokenManager {
             expiresIn: "30m",
             algorithm: "RS512"
         };
-        return jwt.sign({jti: uuidv1()}, this.privateKey, signOptions);
+        return jwt.sign({jti: uuidv1()}, environment.privateKey, signOptions);
     }
 
-    verifyToken(token: string): Promise<string> {
+    verifyToken(token: string, environment: Environment): Promise<string> {
         return new Promise((resolve, reject) => {
-            jwt.verify(token, this.publicKey, (err, decoded) => {
+            jwt.verify(token, environment.publicKey, (err, decoded) => {
                 if (err){
                     resolve("");
                     return;

@@ -5,6 +5,7 @@ import redis from "redis";
 
 import {OpenID} from "./openid";
 import {TokenManager} from "./TokenManager";
+import {EnvironmentManager} from "./EnvironmentManager";
 
 // Create Express server
 const app = express();
@@ -13,6 +14,7 @@ const io = new sio.Server(http);
 const redisClient = redis.createClient(process.env.REDIS_URL ? process.env.REDIS_URL : undefined);
 const oid = new OpenID();
 const tokenManager = new TokenManager(redisClient);
+const environmentManager = new EnvironmentManager();
 
 let MESSAGING_ENABLED = true;
 
@@ -27,17 +29,16 @@ redisClient.on("error", (error) => {
     console.log(error);
 })
 
-app.get("/", (req, res) => {
-    res.send("Hello");
-});
 
 app.get("/env", (req, res) => {
     res.status(200).json({
-        envs: [{
-            name: "Sandpit",
-            url: "https://auth.sandpit.signin.nhs.uk",
-            client_id: "du-nhs-login"
-        }] 
+        envs: environmentManager.getEnvironments().map((env) => {
+            return {
+                name: env.name,
+                url: env.url,
+                client_id: env.clientId
+            }
+        })
     })
 });
 
@@ -65,36 +66,27 @@ app.get("/code", (req, res) => {
     res.redirect("com.dunhslogin://oauth?code="+req.query.code);
 });
 
-app.get("/fido/regRequest", async (req, res) => {
-    const appToken = req.headers.authorization.replace("Bearer ", "");
-    if (!appToken){
-        res.status(400).json({
-            error: "access_denied"
-        });
-        return;
-    }
-    const nhsNumber = await tokenManager.verifyToken(appToken);
-    if (!nhsNumber || nhsNumber == ""){
-        res.status(403).json({
-            error: "invalid_token"
-        });
-        return;
-    }
-    console.log("fido regrequest " + nhsNumber);
-    const nhsAccessToken = await tokenManager.getNhsAccessToken(nhsNumber);
+app.get("/chats", (req, res) => {
 
-    const response = await oid.fidoUafRegister(nhsAccessToken);
-    if (response.error){
-        res.status(500).json(response);
-    }
-    else{
-        res.status(200).json(response);
-    }
 })
 
 app.post("/token", async (req, res) => {
+    const {env, code} = req.query;
+    if (!env) {
+        res.status(400).json({
+            error: "Invalid request"
+        });
+        return;
+    }
+    const environment = environmentManager.getEnvironmentByName(env as string);
+    if (!environment){
+        res.status(400).json({
+            error: `Environment ${env} not found`
+        });
+        return;
+    }
     //@ts-ignore
-    const {idToken, nhsAccessToken, idTokenPayload} = await oid.requestAccessToken(req.query.code);
+    const {idToken, nhsAccessToken, idTokenPayload} = await oid.requestAccessToken(code, environment);
     let messagingDisabledReason = "";
     let accessToken = "";
     if (!idTokenPayload.nhs_number){
@@ -102,7 +94,7 @@ app.post("/token", async (req, res) => {
     }
     else {
         tokenManager.storeNhsAccessToken(nhsAccessToken, idTokenPayload.nhs_number);
-        accessToken = tokenManager.generateToken(idTokenPayload.nhs_number);
+        accessToken = tokenManager.generateToken(idTokenPayload.nhs_number, environment);
     }
     res.json({
         id_token: idToken,

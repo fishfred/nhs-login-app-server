@@ -4,12 +4,10 @@ import { readFileSync } from "fs";
 import { v1 as uuidv1 } from "uuid";
 import { stringify } from "querystring";
 import axios from "axios";
+import { Environment, EnvironmentManager } from './EnvironmentManager';
 
 const openIdConfig = {
-    CLIENT_ID: "du-nhs-login",
     REDIRECT_URI: "https://du-nhs-login.herokuapp.com/code",
-    ENV_URI: "https://auth.sandpit.signin.nhs.uk",
-    TOKEN_URI: "https://auth.sandpit.signin.nhs.uk/token"
 }
 
 export interface NhsTokenResponse {
@@ -66,30 +64,12 @@ export interface NhsUserInfo {
     identity_proofing_level?: string
 }
 
-const exampleUser: NhsUserInfo = {
-    iss: openIdConfig.ENV_URI,
-    aud: openIdConfig.CLIENT_ID,
-    sub: "24400320-234545-234241-111",
-    client_user_metadata: "U2e3rsdjwd==",
-    email: "janedoe@example.com",
-    email_verified: true,
-    nhs_number: "8527685222",
-    family_name: "Doe",
-    given_name: "Jane",
-    identity_proofing_level: "P9",
-    gp_integration_credentials: {
-        gp_user_id: "32498239048-3248734",
-        gp_linkage_key: "dfje2rkjdfkjdfm",
-        gp_ods_code: "A12344"
-    }
-}
-
 export class OpenID {
     constructor() {
 
     }
 
-    async requestAccessToken(code: string): Promise<{
+    async requestAccessToken(code: string, environment: Environment): Promise<{
         idToken: NhsUserInfo,
         nhsAccessToken: string,
         idTokenPayload: any
@@ -102,12 +82,12 @@ export class OpenID {
             code,
             redirect_uri: openIdConfig.REDIRECT_URI,
             client_assertion_type: "urn:ietf:params:oauth:client-assertion-type:jwt-bearer",
-            client_assertion: this.generateAssertionJWT(openIdConfig.TOKEN_URI, openIdConfig.CLIENT_ID),
-            client_id: openIdConfig.CLIENT_ID
+            client_assertion: this.generateAssertionJWT(environment),
+            client_id: environment.clientId
         }
         const post_data_string = stringify(post_data);
         console.log(post_data_string);
-        const response = await axios.post(openIdConfig.TOKEN_URI, post_data_string).catch((error) => {
+        const response = await axios.post(environment.url + "/token", post_data_string).catch((error) => {
             console.log(error);
             if (error.response) {
                 console.log(error.response.data);
@@ -131,32 +111,15 @@ export class OpenID {
         return jwt.decode(token);
     }
 
-    generateAssertionJWT(tokenUri: string, clientId: string) {
-        let privateKey = process.env.PRIVATE_KEY;
-        if (!privateKey) {
-            privateKey = readFileSync(__dirname + "\\..\\private_key.pem", "utf-8");
-        }
+    generateAssertionJWT(environment: Environment) {
         const signOptions: jwt.SignOptions = {
-            issuer: clientId,
-            subject: clientId,
-            audience: tokenUri,
+            issuer: environment.clientId,
+            subject: environment.clientId,
+            audience: environment.url + "/token",
             expiresIn: "30m",
             algorithm: "RS512"
         }
 
-        return jwt.sign({ jti: uuidv1() }, privateKey, signOptions);
-    }
-
-    async fidoUafRegister(access_token: string){
-        return await fetch("https://uaf.sandpit.signin.nhs.uk/regRequest", {
-            method: "GET",
-            headers: {
-                "Authorization": "Bearer " + access_token
-            }
-        }).then((res) => res.json()).catch((err) => {
-            return {
-                error: "request_failed"
-            }
-        });
+        return jwt.sign({ jti: uuidv1() }, environment.privateKey, signOptions);
     }
 }
