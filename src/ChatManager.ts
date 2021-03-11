@@ -23,7 +23,8 @@ export type MessageType = "text" | "image"
 
 export interface Message {
     type: MessageType,
-    data: string
+    data: string,
+    time: number
 }
 
 export class ChatManager {
@@ -85,7 +86,6 @@ export class ChatManager {
                 resolve(res);
             })
         }).then((res) => JSON.parse(res));
-        console.log(info);
         const {name, location} = info;
         const image = await new Promise<string>((resolve, reject) => {
             this.db.get("gp:" + id + ":image", (err, res) => {
@@ -95,7 +95,6 @@ export class ChatManager {
                 resolve(res);
             })
         });
-        console.log(image);
         return {
             id,
             image,
@@ -104,10 +103,21 @@ export class ChatManager {
         }
     }
 
-    async getChatMessages(idToken: string, environment: Environment, uid: string): Promise<Message[]> {
-        const nhsNumber = TokenManager.instance.verifyToken(idToken, environment);
+    async getChatMessages(idToken: string, environment: Environment, uid: string): Promise<{
+        gpToPatient: Message[],
+        patientToGp: Message[]
+    }> {
+        const nhsNumber = await TokenManager.instance.verifyToken(idToken, environment);
+        return {
+            patientToGp: await this.getMessagesFromList("messages:" + nhsNumber + ":" + uid),
+            gpToPatient: await this.getMessagesFromList("messages:" + uid + ":" + nhsNumber),
+        }
+    }
+
+    async getMessagesFromList(key: string): Promise<Message[]> {
+        console.log("Getting messages from list " + key);
         return new Promise<Message[]>((resolve, reject) => {
-            this.db.lrange("messages:" + nhsNumber + ":" + uid, 0, 20, (err, res) => {
+            this.db.lrange(key, 0, 20, (err, res) => {
                 if (err){
                     reject(err);
                     return;
@@ -121,7 +131,7 @@ export class ChatManager {
         return (await this.getGpIdsWhichMessageUser(nhsNumber)).indexOf(gpId) !== -1;
     }
 
-    async sendMessage(idToken: string, environment: Environment, uid: string, message: string, messageType: MessageType) {
+    async sendMessage(idToken: string, environment: Environment, uid: string, message: string, messageType: MessageType): Promise<Message> {
         const nhsNumber = await TokenManager.instance.verifyToken(idToken, environment);
         if (!this.userCanMessageGp(nhsNumber, uid)){
             console.warn(`User ${nhsNumber} is not authorized to message gp ${uid}`);
@@ -129,15 +139,16 @@ export class ChatManager {
         }
         const msgObj: Message = {
             data: message,
-            type: messageType
+            type: messageType,
+            time: Date.now()
         }
-        return new Promise<void>((resolve, reject) => {
+        return new Promise<Message>((resolve, reject) => {
             this.db.lpush(`messages:${nhsNumber}:${uid}`, JSON.stringify(msgObj), (err, res) => {
                 if (err){
                     reject(err);
                 }
                 else {
-                    resolve();
+                    resolve(msgObj);
                 }
             });
         })

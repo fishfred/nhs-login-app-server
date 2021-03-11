@@ -43,8 +43,15 @@ app.get("/env", (req, res) => {
     })
 });
 
-app.get("/chat/:id", (req, res) => {
+app.get("/chat/:id", async (req, res) => {
     // Get all messages in a given chat
+    const token = req.headers.authorization.replace("Bearer ", "");
+    console.log(token);
+    const env = req.query.env as string;
+    console.log(`/chat/${req.params.id} ${env}`);
+    const messages = await chatManager.getChatMessages(token, environmentManager.getEnvironmentByName(env), req.params.id);
+    console.log(messages);
+    res.status(200).json(messages);
 });
 
 app.get("/chats", async (req, res) => {
@@ -55,6 +62,19 @@ app.get("/chats", async (req, res) => {
     res.status(200).json({
         chats
     });
+});
+
+//@ts-ignore
+let ws;
+
+app.get("/message", async (req, res) => {
+    const m = {
+        data: "Hi",
+        time: Date.now(),
+        type: "text",
+    };
+    //@ts-ignore
+    ws.emit("message:text", m, true);
 });
 
 io.on("connection", async (socket: sio.Socket) => {
@@ -70,12 +90,14 @@ io.on("connection", async (socket: sio.Socket) => {
     }
 
     socket.emit("connected");
+    ws = socket;
 
     // New user connected
     socket.on("message:text", async (data) => {
         const {chatid, text} = data;
         console.log(`message ${chatid} ${text}`)
-        await chatManager.sendMessage(idToken, env, chatid, text, "text");
+        const msg = await chatManager.sendMessage(idToken, env, chatid, text, "text");
+        socket.emit("message:text", msg, false);
     })
 })
 
